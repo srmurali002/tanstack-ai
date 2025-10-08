@@ -90,11 +90,13 @@ pnpm dev embed --provider openai --text "Text to create embeddings for"
 ### Tool/Function Calling
 
 ```bash
-# Interactive tool calling demo (OpenAI only for now)
+# Interactive tool calling demo (OpenAI & Anthropic)
 pnpm dev tools --provider openai
+pnpm dev tools --provider anthropic
 
 # With debug mode to see JSON chunks
 pnpm dev tools --provider openai --debug
+pnpm dev tools --provider anthropic --debug
 
 # Or quick shortcut
 pnpm tools
@@ -110,6 +112,8 @@ You: What's 847 * 392?
 ✓ calculate completed
 
 🤖 The result is 332,024.
+
+[Tokens: 156]
 ```
 
 ## API Key Sources

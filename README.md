@@ -492,19 +492,40 @@ const vector = result.embeddings[0]; // number[]
 console.log(`Dimensions: ${vector.length}`);
 ```
 
-## CLI Tool
+## Examples
 
-We provide a full-featured CLI for testing and demos:
+### Standalone Scripts
 
 ```bash
 # Install and build
 pnpm install && pnpm build
 
+# Run examples (set API keys first)
+cd examples
+
+# See basic usage of all providers
+pnpm quick-start
+
+# See streaming in action
+pnpm streaming-demo
+
+# See tool calling with both OpenAI & Anthropic (same code!)
+pnpm tool-calling
+```
+
+**Note:** Set `OPENAI_API_KEY` and/or `ANTHROPIC_API_KEY` environment variables to see the examples work with real API calls.
+
+### Interactive CLI
+
+We provide a full-featured CLI for testing and demos:
+
+```bash
 # Interactive chat
 pnpm cli chat --provider openai
 
-# Tool calling demo
+# Tool calling demo (OpenAI & Anthropic)
 pnpm cli tools --provider openai
+pnpm cli tools --provider anthropic
 
 # See JSON stream chunks
 pnpm cli chat --provider openai --debug
@@ -541,7 +562,7 @@ See `examples/cli/README.md` for full CLI documentation.
 | --------------- | ------ | --------- | ------ | ------ |
 | Chat            | ✅     | ✅        | ✅     | ✅     |
 | Streaming       | ✅     | ✅        | ✅     | ✅     |
-| Tool Calling    | ✅     | ⏳        | ⏳     | ⏳     |
+| Tool Calling    | ✅     | ✅        | ⏳     | ⏳     |
 | Text Generation | ✅     | ✅        | ✅     | ✅     |
 | Summarization   | ✅     | ✅        | ✅     | ✅     |
 | Embeddings      | ✅     | ❌        | ✅     | ✅     |

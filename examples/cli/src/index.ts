@@ -106,12 +106,10 @@ program
 
 program
   .command("tools")
-  .description(
-    "Interactive chat with tool/function calling (OpenAI only for now)"
-  )
+  .description("Interactive chat with tool/function calling")
   .option(
     "-p, --provider <provider>",
-    "AI provider (currently only openai supported)",
+    "AI provider (openai, anthropic)",
     "openai"
   )
   .option("-m, --model <model>", "Model to use")
@@ -542,13 +540,13 @@ async function runTools(options: any) {
   console.log(chalk.cyan("\n=== TanStack AI - Tool Calling Demo ==="));
   console.log(chalk.gray(`Provider: ${options.provider}`));
 
-  if (options.provider !== "openai") {
+  if (options.provider !== "openai" && options.provider !== "anthropic") {
     console.log(
       chalk.yellow(
-        "\n⚠️  Tool calling is currently only supported with OpenAI."
+        "\n⚠️  Tool calling is currently only supported with OpenAI and Anthropic."
       )
     );
-    console.log(chalk.gray("Other providers coming soon!\n"));
+    console.log(chalk.gray("Ollama and Gemini coming soon!\n"));
     return;
   }
 
@@ -627,7 +625,11 @@ Do not attempt to answer these questions without using the tools. Always call th
       const spinner = ora("Thinking...").start();
 
       try {
-        const model = options.model || "gpt-3.5-turbo-0125";
+        const model =
+          options.model ||
+          (options.provider === "anthropic"
+            ? "claude-3-5-sonnet-20241022"
+            : "gpt-3.5-turbo-0125");
 
         spinner.text = "Assistant:";
         spinner.stopAndPersist({ symbol: chalk.blue("🤖") });

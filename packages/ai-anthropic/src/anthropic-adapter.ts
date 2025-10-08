@@ -1,7 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import {
   BaseAdapter,
-  convertLegacyStream,
   type AIAdapterConfig,
   type ChatCompletionOptions,
   type ChatCompletionResult,
@@ -40,7 +39,7 @@ export class AnthropicAdapter extends BaseAdapter {
   ): Promise<ChatCompletionResult> {
     const { systemMessage, messages } = this.formatMessages(options.messages);
 
-    const response = await this.client.messages.create({
+    const requestParams: any = {
       model: options.model || "claude-3-sonnet-20240229",
       messages: messages as any,
       system: systemMessage,
@@ -49,18 +48,53 @@ export class AnthropicAdapter extends BaseAdapter {
       top_p: options.topP,
       stop_sequences: options.stopSequences,
       stream: false,
-    });
+    };
 
-    const content = response.content
-      .map((c) => (c.type === "text" ? c.text : ""))
+    // Add tools if provided
+    if (options.tools && options.tools.length > 0) {
+      requestParams.tools = options.tools.map((t) => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+
+      if (options.toolChoice && typeof options.toolChoice === "object") {
+        requestParams.tool_choice = {
+          type: "tool",
+          name: options.toolChoice.function.name,
+        };
+      } else if (options.toolChoice === "auto") {
+        requestParams.tool_choice = { type: "auto" };
+      }
+    }
+
+    const response = await this.client.messages.create(requestParams);
+
+    // Extract text content
+    const textContent = response.content
+      .filter((c) => c.type === "text")
+      .map((c: any) => c.text)
       .join("");
+
+    // Extract tool calls
+    const toolCalls = response.content
+      .filter((c) => c.type === "tool_use")
+      .map((c: any) => ({
+        id: c.id,
+        type: "function" as const,
+        function: {
+          name: c.name,
+          arguments: JSON.stringify(c.input),
+        },
+      }));
 
     return {
       id: response.id,
       model: response.model,
-      content,
+      content: textContent || null,
       role: "assistant",
       finishReason: response.stop_reason as any,
+      toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
       usage: {
         promptTokens: response.usage.input_tokens,
         completionTokens: response.usage.output_tokens,
@@ -110,12 +144,138 @@ export class AnthropicAdapter extends BaseAdapter {
   async *chatStream(
     options: ChatCompletionOptions
   ): AsyncIterable<StreamChunk> {
-    // Use legacy stream converter for now
-    // TODO: Implement native structured streaming for Anthropic
-    yield* convertLegacyStream(
-      this.chatCompletionStream(options),
-      options.model || "claude-3-sonnet-20240229"
-    );
+    const { systemMessage, messages } = this.formatMessages(options.messages);
+
+    const requestParams: any = {
+      model: options.model || "claude-3-sonnet-20240229",
+      messages: messages as any,
+      system: systemMessage,
+      max_tokens: options.maxTokens || 1024,
+      temperature: options.temperature,
+      top_p: options.topP,
+      stop_sequences: options.stopSequences,
+      stream: true,
+    };
+
+    // Add tools if provided
+    if (options.tools && options.tools.length > 0) {
+      requestParams.tools = options.tools.map((t) => ({
+        name: t.function.name,
+        description: t.function.description,
+        input_schema: t.function.parameters,
+      }));
+
+      if (options.toolChoice && typeof options.toolChoice === "object") {
+        requestParams.tool_choice = {
+          type: "tool",
+          name: options.toolChoice.function.name,
+        };
+      } else if (options.toolChoice === "auto") {
+        requestParams.tool_choice = { type: "auto" };
+      }
+    }
+
+    const stream = (await this.client.messages.create(requestParams)) as any;
+
+    let accumulatedContent = "";
+    const timestamp = Date.now();
+    const toolCallsMap = new Map<
+      number,
+      { id: string; name: string; input: string }
+    >();
+    let currentToolIndex = -1;
+
+    try {
+      for await (const event of stream) {
+        if (event.type === "content_block_start") {
+          if (event.content_block.type === "tool_use") {
+            currentToolIndex++;
+            toolCallsMap.set(currentToolIndex, {
+              id: event.content_block.id,
+              name: event.content_block.name,
+              input: "",
+            });
+          }
+        } else if (event.type === "content_block_delta") {
+          if (event.delta.type === "text_delta") {
+            const delta = event.delta.text;
+            accumulatedContent += delta;
+            yield {
+              type: "content",
+              id: this.generateId(),
+              model: options.model || "claude-3-sonnet-20240229",
+              timestamp,
+              delta,
+              content: accumulatedContent,
+              role: "assistant",
+            };
+          } else if (event.delta.type === "input_json_delta") {
+            // Tool input is being streamed
+            const existing = toolCallsMap.get(currentToolIndex);
+            if (existing) {
+              existing.input += event.delta.partial_json;
+
+              yield {
+                type: "tool_call",
+                id: this.generateId(),
+                model: options.model || "claude-3-sonnet-20240229",
+                timestamp,
+                toolCall: {
+                  id: existing.id,
+                  type: "function",
+                  function: {
+                    name: existing.name,
+                    arguments: event.delta.partial_json,
+                  },
+                },
+                index: currentToolIndex,
+              };
+            }
+          }
+        } else if (event.type === "message_stop") {
+          yield {
+            type: "done",
+            id: this.generateId(),
+            model: options.model || "claude-3-sonnet-20240229",
+            timestamp,
+            finishReason: "stop",
+          };
+        } else if (event.type === "message_delta") {
+          if (event.delta.stop_reason) {
+            yield {
+              type: "done",
+              id: this.generateId(),
+              model: options.model || "claude-3-sonnet-20240229",
+              timestamp,
+              finishReason:
+                event.delta.stop_reason === "tool_use"
+                  ? "tool_calls"
+                  : (event.delta.stop_reason as any),
+              usage: event.usage
+                ? {
+                    promptTokens: event.usage.input_tokens || 0,
+                    completionTokens: event.usage.output_tokens || 0,
+                    totalTokens:
+                      (event.usage.input_tokens || 0) +
+                      (event.usage.output_tokens || 0),
+                  }
+                : undefined,
+            };
+          }
+        }
+      }
+    } catch (error: any) {
+      yield {
+        type: "error",
+        id: this.generateId(),
+        model: options.model || "claude-3-sonnet-20240229",
+        timestamp,
+        error: {
+          message: error.message || "Unknown error occurred",
+          code: error.code,
+        },
+      };
+    }
   }
 
   async generateText(
@@ -209,17 +369,62 @@ export class AnthropicAdapter extends BaseAdapter {
 
   private formatMessages(messages: Message[]): {
     systemMessage?: string;
-    messages: Array<{ role: string; content: string }>;
+    messages: Array<any>;
   } {
     const systemMessages = messages.filter((m) => m.role === "system");
     const nonSystemMessages = messages.filter((m) => m.role !== "system");
 
     return {
       systemMessage: systemMessages.map((m) => m.content || "").join("\n"),
-      messages: nonSystemMessages.map((m) => ({
-        role: m.role === "assistant" ? "assistant" : "user",
-        content: m.content || "",
-      })),
+      messages: nonSystemMessages.map((m) => {
+        // Handle tool result messages
+        if (m.role === "tool" && m.toolCallId) {
+          return {
+            role: "user",
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: m.toolCallId,
+                content: m.content || "",
+              },
+            ],
+          };
+        }
+
+        // Handle assistant messages with tool calls
+        if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+          const content: any[] = [];
+
+          // Add text content if present
+          if (m.content) {
+            content.push({
+              type: "text",
+              text: m.content,
+            });
+          }
+
+          // Add tool use blocks
+          for (const toolCall of m.toolCalls) {
+            content.push({
+              type: "tool_use",
+              id: toolCall.id,
+              name: toolCall.function.name,
+              input: JSON.parse(toolCall.function.arguments),
+            });
+          }
+
+          return {
+            role: "assistant",
+            content,
+          };
+        }
+
+        // Regular messages
+        return {
+          role: m.role === "assistant" ? "assistant" : "user",
+          content: m.content || "",
+        };
+      }),
     };
   }
 

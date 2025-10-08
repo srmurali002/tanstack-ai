@@ -4,10 +4,22 @@
  * TanStack AI - Tool Calling Example
  *
  * This demonstrates how to use function calling with streaming
+ * Works with both OpenAI and Anthropic using the same code!
+ *
+ * Usage:
+ *   # With OpenAI only:
+ *   OPENAI_API_KEY=sk-... node examples/tool-calling-example.js
+ *
+ *   # With Anthropic only:
+ *   ANTHROPIC_API_KEY=sk-ant-... node examples/tool-calling-example.js
+ *
+ *   # With both (recommended):
+ *   OPENAI_API_KEY=sk-... ANTHROPIC_API_KEY=sk-ant-... node examples/tool-calling-example.js
  */
 
 import { AI } from "../packages/ai/dist/index.js";
 import { OpenAIAdapter } from "../packages/ai-openai/dist/index.js";
+import { AnthropicAdapter } from "../packages/ai-anthropic/dist/index.js";
 
 // Define a simple calculator tool
 const tools = [
@@ -41,20 +53,18 @@ async function calculate(expression) {
   }
 }
 
-async function demo() {
-  console.log("🛠️  TanStack AI - Tool Calling Demo\n");
+async function demoProvider(providerName, adapter, model) {
+  console.log(`\n${"=".repeat(60)}`);
+  console.log(`🛠️  ${providerName} - Tool Calling Demo`);
+  console.log("=".repeat(60));
 
-  const ai = new AI(
-    new OpenAIAdapter({
-      apiKey: process.env.OPENAI_API_KEY || "demo-key",
-    })
-  );
+  const ai = new AI(adapter);
 
   const messages = [
     { role: "user", content: "What is 847 multiplied by 392?" },
   ];
 
-  console.log("📝 User: What is 847 multiplied by 392?\n");
+  console.log("\n📝 User: What is 847 multiplied by 392?\n");
 
   try {
     let iteration = 0;
@@ -70,7 +80,7 @@ async function demo() {
       console.log("🔄 Streaming response...\n");
 
       for await (const chunk of ai.streamChat({
-        model: "gpt-3.5-turbo",
+        model,
         messages,
         tools,
         toolChoice: "auto",
@@ -147,18 +157,58 @@ async function demo() {
       }
     }
   } catch (error) {
-    console.error("❌ Error (expected without API key):", error.message);
+    console.error(`\n❌ ${providerName} Error:`, error.message);
+    if (error.message.includes("401") || error.message.includes("API key")) {
+      console.log(
+        `   Set ${
+          providerName === "OpenAI" ? "OPENAI_API_KEY" : "ANTHROPIC_API_KEY"
+        } to try this provider`
+      );
+    }
+  }
+}
+
+async function demo() {
+  console.log("\n🌟 TanStack AI - Universal Tool Calling Demo 🌟");
+  console.log("\nThis shows the SAME code working with multiple providers!\n");
+
+  // Try OpenAI
+  if (process.env.OPENAI_API_KEY) {
+    await demoProvider(
+      "OpenAI",
+      new OpenAIAdapter({ apiKey: process.env.OPENAI_API_KEY }),
+      "gpt-3.5-turbo-0125"
+    );
+  } else {
+    console.log("\n⏭️  Skipping OpenAI (set OPENAI_API_KEY to try)");
   }
 
-  console.log("\n📚 What happened:");
+  // Try Anthropic
+  if (process.env.ANTHROPIC_API_KEY) {
+    await demoProvider(
+      "Anthropic Claude",
+      new AnthropicAdapter({ apiKey: process.env.ANTHROPIC_API_KEY }),
+      "claude-3-5-sonnet-20241022"
+    );
+  } else {
+    console.log("\n⏭️  Skipping Anthropic (set ANTHROPIC_API_KEY to try)");
+  }
+
+  console.log("\n" + "=".repeat(60));
+  console.log("\n✨ Key Takeaway:");
+  console.log("   The EXACT SAME code works with both providers!");
+  console.log("   No provider-specific logic needed.\n");
+
+  console.log("📚 What happened in each demo:");
   console.log("  1. User asked a math question");
   console.log("  2. AI decided to use the 'calculate' tool");
   console.log("  3. Tool was executed with the expression");
   console.log("  4. Result was sent back to AI");
-  console.log("  5. AI provided the final answer to user");
+  console.log("  5. AI provided the final answer to user\n");
 
-  console.log("\n🎯 Try it yourself:");
+  console.log("🎯 Try the interactive CLI:");
   console.log("  pnpm cli tools --provider openai");
+  console.log("  pnpm cli tools --provider anthropic\n");
 }
 
 demo();
