@@ -7,27 +7,13 @@ Get started with TanStack AI in minutes. This guide will walk you through creati
 
 ## Installation
 
-<!-- ::tabs:start id="install" -->
-
-# npm
-
 ```bash
 npm install @tanstack/ai @tanstack/ai-react @tanstack/ai-openai
-```
-
-# pnpm
-
-```bash
+# or
 pnpm add @tanstack/ai @tanstack/ai-react @tanstack/ai-openai
-```
-
-# Yarn
-
-```bash
+#or
 yarn add @tanstack/ai @tanstack/ai-react @tanstack/ai-openai
 ```
-
-<!-- ::tabs:end -->
 
 ## Server Setup
 
@@ -203,6 +189,6 @@ chat({ tools: [getProducts] })
 
 ## Next Steps
 
-- Learn about [Tools](../guides/tools) to add function calling
-- Check out [Client Tools](../guides/client-tools) for frontend operations
-- See the [API Reference](../api/ai) for more options
+- Learn about [Tools](../../guides/tools) to add function calling
+- Check out [Client Tools](../../guides/client-tools) for frontend operations
+- See the [API Reference](../../api/ai) for more options
