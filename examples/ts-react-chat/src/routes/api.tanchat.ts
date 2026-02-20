@@ -9,6 +9,7 @@ import { openaiText } from '@tanstack/ai-openai'
 import { ollamaText } from '@tanstack/ai-ollama'
 import { anthropicText } from '@tanstack/ai-anthropic'
 import { geminiText } from '@tanstack/ai-gemini'
+import { openRouterText } from '@tanstack/ai-openrouter'
 import { grokText } from '@tanstack/ai-grok'
 import type { AnyTextAdapter } from '@tanstack/ai'
 import {
@@ -19,7 +20,13 @@ import {
   recommendGuitarToolDef,
 } from '@/lib/guitar-tools'
 
-type Provider = 'openai' | 'anthropic' | 'gemini' | 'ollama' | 'grok'
+type Provider =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'ollama'
+  | 'grok'
+  | 'openrouter'
 
 const SYSTEM_PROMPT = `You are a helpful assistant for a guitar store.
 
@@ -43,13 +50,24 @@ Step 1: Call getGuitars()
 Step 2: Call recommendGuitar(id: "6") 
 Step 3: Done - do NOT add any text after calling recommendGuitar
 `
-const addToCartToolServer = addToCartToolDef.server((args) => ({
-  success: true,
-  cartId: 'CART_' + Date.now(),
-  guitarId: args.guitarId,
-  quantity: args.quantity,
-  totalItems: args.quantity,
-}))
+const addToCartToolServer = addToCartToolDef.server((args, context) => {
+  context?.emitCustomEvent('tool:progress', {
+    tool: 'addToCart',
+    message: `Adding ${args.quantity}x guitar ${args.guitarId} to cart`,
+  })
+  const cartId = 'CART_' + Date.now()
+  context?.emitCustomEvent('tool:progress', {
+    tool: 'addToCart',
+    message: `Cart ${cartId} created successfully`,
+  })
+  return {
+    success: true,
+    cartId,
+    guitarId: args.guitarId,
+    quantity: args.quantity,
+    totalItems: args.quantity,
+  }
+})
 
 export const Route = createFileRoute('/api/tanchat')({
   server: {
@@ -85,6 +103,17 @@ export const Route = createFileRoute('/api/tanchat')({
                 (model || 'claude-sonnet-4-5') as 'claude-sonnet-4-5',
               ),
             }),
+          openrouter: () =>
+            createChatOptions({
+              adapter: openRouterText('openai/gpt-5.1'),
+              modelOptions: {
+                models: ['openai/chatgpt-4o-latest'],
+                route: 'fallback',
+                reasoning: {
+                  effort: 'medium',
+                },
+              },
+            }),
           gemini: () =>
             createChatOptions({
               adapter: geminiText(
@@ -106,12 +135,10 @@ export const Route = createFileRoute('/api/tanchat')({
             createChatOptions({
               adapter: ollamaText((model || 'gpt-oss:120b') as 'gpt-oss:120b'),
               modelOptions: { think: 'low', options: { top_k: 1 } },
-              temperature: 12,
             }),
           openai: () =>
             createChatOptions({
               adapter: openaiText((model || 'gpt-4o') as 'gpt-4o'),
-              temperature: 2,
               modelOptions: {},
             }),
         }

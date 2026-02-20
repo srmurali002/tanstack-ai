@@ -9,6 +9,7 @@
     "**/smoke-tests/**"
   ],
   "ignore": [
+    "scripts/**",
     "packages/typescript/ai-bedrock/live-tests/**",
     "packages/typescript/ai-openai/live-tests/**",
     "packages/typescript/ai-openai/src/**/*.test.ts",
